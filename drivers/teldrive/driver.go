@@ -206,6 +206,7 @@ func (d *Teldrive) Put(ctx context.Context, dstDir model.Obj, file model.FileStr
 	chunkSizeInMB := d.ChunkSize
 	chunkSize := chunkSizeInMB * 1024 * 1024 // Convert MB to bytes
 	totalSize := file.GetSize()
+	modTime := file.ModTime()
 	totalParts := int(math.Ceil(float64(totalSize) / float64(chunkSize)))
 	maxRetried := 3
 
@@ -228,14 +229,14 @@ func (d *Teldrive) Put(ctx context.Context, dstDir model.Obj, file model.FileStr
 		return err
 	}
 	if totalSize == 0 {
-		return d.touch(file.GetName(), dstDir.GetPath())
+		return d.touch(file.GetName(), dstDir.GetPath(), modTime)
 	}
 
 	if totalParts <= 1 {
-		return d.doSingleUpload(ctx, dstDir, file, up, maxRetried, totalParts, chunkSize, fileId)
+		return d.doSingleUpload(ctx, dstDir, file, up, maxRetried, totalParts, chunkSize, fileId, modTime)
 	}
 
-	return d.doMultiUpload(ctx, dstDir, file, up, maxRetried, totalParts, chunkSize, fileId)
+	return d.doMultiUpload(ctx, dstDir, file, up, maxRetried, totalParts, chunkSize, fileId, modTime)
 }
 
 func (d *Teldrive) GetArchiveMeta(ctx context.Context, obj model.Obj, args model.ArchiveArgs) (model.ArchiveMeta, error) {

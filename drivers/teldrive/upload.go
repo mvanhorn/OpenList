@@ -26,11 +26,14 @@ import (
 )
 
 // create empty file
-func (d *Teldrive) touch(name, path string) error {
+func (d *Teldrive) touch(name, path string, modTime time.Time) error {
 	uploadBody := base.Json{
 		"name": name,
 		"type": "file",
 		"path": path,
+	}
+	if !modTime.IsZero() {
+		uploadBody["updatedAt"] = modTime
 	}
 	if err := d.request(http.MethodPost, "/api/files", func(req *resty.Request) {
 		req.SetBody(uploadBody)
@@ -46,7 +49,7 @@ func getMD5Hash(text string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-func (d *Teldrive) createFileOnUploadSuccess(name, id, path string, uploadedFileParts []FilePart, totalSize int64) error {
+func (d *Teldrive) createFileOnUploadSuccess(name, id, path string, uploadedFileParts []FilePart, totalSize int64, modTime time.Time) error {
 	remoteFileParts, err := d.getFilePart(id)
 	if err != nil {
 		return err
@@ -68,6 +71,9 @@ func (d *Teldrive) createFileOnUploadSuccess(name, id, path string, uploadedFile
 		"path":  path,
 		"parts": formatParts,
 		"size":  totalSize,
+	}
+	if !modTime.IsZero() {
+		uploadBody["updatedAt"] = modTime
 	}
 	// create file here
 	if err := d.request(http.MethodPost, "/api/files", func(req *resty.Request) {
@@ -141,7 +147,7 @@ func (d *Teldrive) singleUploadRequest(ctx context.Context, fileId string, callb
 }
 
 func (d *Teldrive) doSingleUpload(ctx context.Context, dstDir model.Obj, file model.FileStreamer, up model.UpdateProgress,
-	maxRetried, totalParts int, chunkSize int64, fileId string) error {
+	maxRetried, totalParts int, chunkSize int64, fileId string, modTime time.Time) error {
 
 	totalSize := file.GetSize()
 	var fileParts []FilePart
@@ -213,11 +219,11 @@ func (d *Teldrive) doSingleUpload(ctx context.Context, dstDir model.Obj, file mo
 
 	}
 
-	return d.createFileOnUploadSuccess(file.GetName(), fileId, dstDir.GetPath(), fileParts, totalSize)
+	return d.createFileOnUploadSuccess(file.GetName(), fileId, dstDir.GetPath(), fileParts, totalSize, modTime)
 }
 
 func (d *Teldrive) doMultiUpload(ctx context.Context, dstDir model.Obj, file model.FileStreamer, up model.UpdateProgress,
-	maxRetried, totalParts int, chunkSize int64, fileId string) error {
+	maxRetried, totalParts int, chunkSize int64, fileId string, modTime time.Time) error {
 
 	concurrent := d.UploadConcurrency
 	g, ctx := errgroup.WithContext(ctx)
@@ -330,7 +336,7 @@ func (d *Teldrive) doMultiUpload(ctx context.Context, dstDir model.Obj, file mod
 		return fileParts[i].PartNo < fileParts[j].PartNo
 	})
 
-	return d.createFileOnUploadSuccess(file.GetName(), fileId, dstDir.GetPath(), fileParts, totalSize)
+	return d.createFileOnUploadSuccess(file.GetName(), fileId, dstDir.GetPath(), fileParts, totalSize, modTime)
 }
 
 func (d *Teldrive) uploadSingleChunk(ctx context.Context, fileId string, task chunkTask, totalParts, maxRetried int) (*FilePart, error) {
