@@ -72,6 +72,8 @@ func GetRangeReaderFromLink(size int64, link *model.Link) (model.RangeReaderIF, 
 		rangeReader := func(ctx context.Context, httpRange http_range.Range) (io.ReadCloser, error) {
 			requestHeader, _ := ctx.Value(conf.RequestHeaderKey).(http.Header)
 			header := net.ProcessHeader(requestHeader, link.Header)
+			// Request identity so bytes match the stored size and offsets.
+			header.Set("Accept-Encoding", "identity")
 			return down.Download(ctx, &net.HttpRequestParams{
 				Range:     httpRange,
 				Size:      size,
@@ -88,6 +90,8 @@ func GetRangeReaderFromLink(size int64, link *model.Link) (model.RangeReaderIF, 
 		}
 		requestHeader, _ := ctx.Value(conf.RequestHeaderKey).(http.Header)
 		header := net.ProcessHeader(requestHeader, link.Header)
+		// Request identity so bytes match the stored size and offsets.
+		header.Set("Accept-Encoding", "identity")
 		header = http_range.ApplyRangeToHttpHeader(httpRange, header)
 
 		response, err := net.RequestHttp(ctx, "GET", header, link.URL)

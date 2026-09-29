@@ -268,7 +268,6 @@ var unsafeProxyHeaders = map[string]struct{}{
 	"x-real-ip":           {},
 }
 
-
 func ProcessHeader(origin, override http.Header) http.Header {
 	result := http.Header{}
 	// client header
@@ -302,25 +301,38 @@ func RequestHttp(ctx context.Context, httpMethod string, headerOverride http.Hea
 	}
 	// TODO clean header with blocklist or passlist
 	res.Header.Del("set-cookie")
-	var reader io.Reader
 	if res.StatusCode >= 400 {
 		// 根据 Content-Encoding 判断 Body 是否压缩
-		switch res.Header.Get("Content-Encoding") {
-		case "gzip":
-			// 使用gzip.NewReader解压缩
-			reader, _ = gzip.NewReader(res.Body)
-			defer reader.(*gzip.Reader).Close()
-		default:
-			// 没有Content-Encoding，直接读取
-			reader = res.Body
-		}
-		all, _ := io.ReadAll(reader)
-		_ = res.Body.Close()
-		msg := string(all)
+		msg, decErr := readHTTPErrorBody(res)
 		log.Debugln(msg)
-		return nil, fmt.Errorf("http request [%s] failure,status: %w response:%s", URL, HttpStatusCodeError(res.StatusCode), msg)
+		statusErr := HttpStatusCodeError(res.StatusCode)
+		if decErr != nil {
+			if msg != "" {
+				return nil, fmt.Errorf("http request [%s] failure,status: %w response:%s: %v", URL, statusErr, msg, decErr)
+			}
+			return nil, fmt.Errorf("http request [%s] failure,status: %w response:%v", URL, statusErr, decErr)
+		}
+		return nil, fmt.Errorf("http request [%s] failure,status: %w response:%s", URL, statusErr, msg)
 	}
 	return res, nil
+}
+
+// readHTTPErrorBody drains an upstream HTTP error. The body is closed on every
+// path. A gzip reader is created and closed only after gzip.NewReader succeeds.
+func readHTTPErrorBody(res *http.Response) (string, error) {
+	defer res.Body.Close()
+
+	reader := io.Reader(res.Body)
+	if res.Header.Get("Content-Encoding") == "gzip" {
+		gz, err := gzip.NewReader(res.Body)
+		if err != nil {
+			return "", err
+		}
+		defer gz.Close()
+		reader = gz
+	}
+	all, err := io.ReadAll(reader)
+	return string(all), err
 }
 
 type HttpStatusCodeError int
